@@ -1,0 +1,199 @@
+"""
+Ubuntu Apache Virtual Host Manager.
+
+"""
+
+"""Main menu."""
+import tldextract
+import os
+
+import shutil
+import os
+import pwd
+import grp
+from subprocess import Popen, PIPE
+
+def cls():
+    #os.system('cls' if os.name == 'nt' else 'clear')
+    os.system('clear')
+
+def testApacheSyntax():
+    """Test Apache config syntax."""
+    # TODO implement "which" instead of static /usr/sbin/ http://code.activestate.com/recipes/579035-a-unix-like-which-command-for-python/
+    if not os.path.isfile('/usr/sbin/apachectl'):
+        return False
+    args = ['/usr/sbin/apachectl', 'configtest']
+    result = Popen(args, stdout=PIPE, stderr=PIPE).communicate()
+    if result[0] == "Syntax OK" and not result[1]:
+        return True
+    return False
+
+def cleanDefaultStructure():
+    """Delete default html folder when empty and set proper rights."""
+    defaultPath = '/var/www/html'
+    rootPath = '/var/www'
+    if os.path.isdir(defaultPath) and os.listdir(defaultPath) == []:
+        shutil.rmtree()
+    os.chmod(rootPath, 755)
+    uid = pwd.getpwnam("www-data").pw_uid
+    gid = grp.getgrnam("www-data").gr_gid
+    os.chown(rootPath, uid, gid)
+
+def align_text(text, symbol, position, heading):
+    """Align text properly in the center."""
+    maxsize = 100
+    if(maxsize % 2 == 1):
+        maxsize += 1
+
+    if len(text) >= (maxsize-4):
+        return False
+
+    headingCorner = "+"
+    if not heading:
+        headingCorner = "|"
+
+    if position == "center":
+        padding = int(((maxsize-len(text)) / 2) - 1)
+        if text != "":
+            text = " " + text + " "
+            padding -= 1
+        text = headingCorner + ("".ljust(padding, symbol)) + text
+        text += ("".ljust(padding, symbol))
+
+    if position == "left":
+        padding = maxsize - len(text) - 4
+        text = headingCorner + " " + text + " " + ("".ljust(padding, symbol))
+
+    if position == "right":
+        padding = maxsize - len(text) - 4
+        text = headingCorner + ("".ljust(padding, symbol)) + " " + text + " "
+
+    if(len(text) % 2 == 0):
+        text += symbol
+    text += headingCorner
+    print (text)
+
+def menu_list_all():
+    """Print main menu."""
+    cls()
+    loop = True
+    while loop:
+        list = menu_list_all_print()
+        choice = input("Please choose an option [1-6]: ")
+
+        print (choice)
+        print (list)
+        if str(choice) in list:
+            print (list[str(choice)])
+            loop = False
+        else:
+            raw_input("Wrong option selection. Enter any key to try again..")
+
+def menu_list_all_print():
+    """Print main menu."""
+    cls()
+
+    print ("")
+    align_text(APP_TITLE, "=", "center", True)
+    align_text("For Ubuntu 16.x", " ", "center",  False)
+    align_text("", "-", "center",  False)
+
+    align_text("", " ", "left",  False)
+    i = 0
+    list = {}
+    for config in glob.glob("/etc/apache2/sites-available/*.conf"):
+        i = i + 1
+        align_text(" [" + str(i) + "] " + config, " ", "left",  False)
+        list[str(i)] = "a2dissite " + config
+    # print list
+    align_text("", " ", "left",  False)
+    align_text("", "=", "center",  True)
+    return list
+
+APP_TITLE = "Simple Apache Vhost manager"
+def menu_main_print():
+    cls()
+    """Print main menu."""
+    print ("")
+    align_text(APP_TITLE, "=", "center", True)
+    align_text("For Ubuntu 16.x", " ", "center",  False)
+    align_text("", "-", "center",  False)
+
+    align_text("", " ", "left",  False)
+    align_text(" [1] Create new", " ", "left",  False)
+    align_text(" [2] List all", " ", "left",  False)
+    align_text(" [3] List active", " ", "left",  False)
+    align_text(" [4] Disable", " ", "left",  False)
+    align_text(" [5] Enable", " ", "left",  False)
+    align_text(" [6] Exit", " ", "left",  False)
+    align_text("", " ", "left",  False)
+    align_text("", "=", "center",  True)
+
+def menu_main():
+    """Load the menu."""
+    loop = True
+    while loop:
+        menu_main_print()
+        choice = input("Please choose an option [1-6]: ")
+
+        if choice == 1:
+            print ("")
+            print ("Reset and clean default file structure")
+            cleanDefaultStructure()
+            print ("Create virtual host")
+            domainName = raw_input('Please enter the domain name (no subdomain or "www"): ')
+            domaintTest = tldextract.extract(domainName)
+            if not domaintTest.suffix or domaintTest.subdomain:
+                print ("Invalid domain supplied")
+                loop = False
+                return
+            generateFile = '/etc/apache2/sites-available/' + domainName + '.conf'
+            if os.path.isfile(generateFile):
+                print ("Virtual host already exists")
+                loop = False
+                return
+            www = raw_input('Do you want to add the alias "www.' + domainName + '"? [Y/n] ')
+            allowOverride = raw_input('Do you want to be able to use mod_rewrite (enable AllowOverride)? [Y/n] ')
+            test = "\n# This virtual host is automatically generated by " + APP_TITLE
+            test += "\n<VirtualHost *:80>"
+            test += "\n\tServerName " + domainName
+            if www.lower() == "y":
+                test += "\n\tServerAlias www." + domainName
+            test += "\n\tServerAdmin webmaster@" + domainName
+            test += "\n\tErrorLog /var/www/" + domainName + "/logs/error.log"
+            test += "\n\tCustomLog /var/www/" + domainName + "/logs/access.log combined"
+            test += "\n\tDocumentRoot /var/www/" + domainName + "/public_html"
+            if allowOverride.lower() == "y":
+                test += "\n\t<Directory /var/www/" + domainName + "/public_html>"
+                test += "\n\t\tAllowOverride All"
+                test += "\n\t\tOptions FollowSymLinks"
+                test += "\n\t\tRequire all granted"
+                test += "\n\t</Directory>"
+            test += "\n</VirtualHost>"
+
+            print (test)
+            print ("Write to " + generateFile)
+            with open(generateFile, 'w') as write_file:
+                write_file.write(test)
+            loop = False
+        elif choice == 2:
+            print ("Listing all virtual hosts")
+            loop = False
+            menu_list_all()
+        elif choice == 3:
+            print("Listing enabled virtual hosts")
+            print(glob.glob("/etc/apache2/sites-enabled/*.conf"))
+            loop = False
+        elif choice == 4:
+            print("action finished")
+            loop = False
+        elif choice == 5:
+            print("Menu 5 has been selected")
+            loop = False
+        elif choice == 6:
+            print("Bye bye")
+            loop = False
+        else:
+            raw_input("Wrong option selection. Enter any key to try again..")
+
+menu_main()
